@@ -3,6 +3,7 @@
 application.json
 credentials.json
 tool.log
+gts-ginnys-tonic.code-workspace
 
 ## GitHub's python defaults:
 # Byte-compiled / optimized / DLL files
