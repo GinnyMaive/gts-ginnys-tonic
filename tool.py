@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 import glob
 import os
 import json
@@ -18,12 +19,12 @@ DELAY_BETWEEN_REQUESTS = 2 # seconds
 DRY_RUN = True
 BASE_DIR = './'
 
-AUTHORIZATION_URL = f'{INSTANCE_BASE_URL}oauth/authorize'
-TOKEN_URL = f'{INSTANCE_BASE_URL}oauth/token'
-FOLLOWERS_URL = f'{INSTANCE_BASE_URL}api/v1/accounts/' '{user_id}/followers'
-FOLLOWING_URL = f'{INSTANCE_BASE_URL}api/v1/accounts/' '{user_id}/following'
-UNFOLLOW_URL = f'{INSTANCE_BASE_URL}api/v1/accounts/' '{unfollow_user_id}/unfollow'
-VERIFY_CREDENTIALS_URL = f'{INSTANCE_BASE_URL}api/v1/accounts/verify_credentials'
+AUTHORIZATION_URL = 'oauth/authorize'
+TOKEN_URL = 'oauth/token'
+FOLLOWERS_URL = 'api/v1/accounts/{user_id}/followers'
+FOLLOWING_URL = 'api/v1/accounts/{user_id}/following'
+UNFOLLOW_URL = 'api/v1/accounts/{unfollow_user_id}/unfollow'
+VERIFY_CREDENTIALS_URL = 'api/v1/accounts/verify_credentials'
 # ACCOUNTS_URL = f'{INSTANCE_BASE_URL}api/v1/accounts'
 # STATUS_URL = f'{INSTANCE_BASE_URL}api/v1/statuses'
 # MEDIA_URL = f'{INSTANCE_BASE_URL}api/v1/media'
@@ -64,7 +65,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
 def get_auth_code():
     server = HTTPServer(('localhost', 8080), OAuthCallbackHandler)
     auth_url = (
-        f'{AUTHORIZATION_URL}?response_type=code&client_id={CLIENT_ID}'
+        f'{api_url(AUTHORIZATION_URL)}?response_type=code&client_id={CLIENT_ID}'
         f'&redirect_uri={REDIRECT_URI}&scope=read%20write'
     )
     webbrowser.open(auth_url)
@@ -82,6 +83,18 @@ def set_app_config():
     else:
         print(f'{APPLICATION_FILE} should exist with your client_id and client_secret!')
 
+class RequestType(Enum):
+    GET = requests.get
+    POST = requests.post
+
+def api_request(request_type, url, access_token, data=None, params=None):
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+    full_url = api_url(url)
+    return request_type(full_url, headers=headers, data=data, params=params)
+
 def get_token(auth_code):
     data = {
         'grant_type': 'authorization_code',
@@ -91,7 +104,7 @@ def get_token(auth_code):
         'client_secret': CLIENT_SECRET,
         'scopes': 'read write',
     }
-    response = requests.post(TOKEN_URL, data=data)
+    response = requests.post(api_url(TOKEN_URL), data=data)
     response.raise_for_status()
     return response.json()
 
@@ -131,18 +144,8 @@ def parse_link_header(link_header):
         }
     return links
 
-def get_user_id(creds):
-    access_token = creds.get('access_token')
-    if not access_token:
-        raise ValueError('No access token found in credentials.')
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
-    }
-    response = requests.get(
-        VERIFY_CREDENTIALS_URL,
-        headers=headers
-    )
+def get_user_id(access_token):
+    response = api_request(RequestType.GET, VERIFY_CREDENTIALS_URL, access_token)
     log_to_logfile(f'Post status response: {response.status_code}: {response.reason}; {response.json()}')
     if response.status_code != 200:
       error_str = response.json().get('error', '')
@@ -150,14 +153,7 @@ def get_user_id(creds):
       return None
     return response.json().get('id')
 
-def get_paginated_results(creds, url):
-    access_token = creds.get('access_token')
-    if not access_token:
-        raise ValueError('No access token found in credentials.')
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
-    }
+def get_paginated_results(access_token, url):
     max_id = None
     results = []
     for _ in range(20):  # Limit to 20 pages to avoid infinite loops
@@ -165,12 +161,7 @@ def get_paginated_results(creds, url):
             'limit': 50,
             'max_id': max_id,
         }
-        log_to_logfile(f'Fetching following from {url}')
-        response = requests.get(
-            url,
-            headers=headers,
-            params=payload
-        )
+        response = api_request(RequestType.GET, url, access_token, params=payload)
         if len(response.json()) == 0:
             log_to_logfile('No more to fetch.')
             break
@@ -197,12 +188,12 @@ def log_user_info(user):
         f'''  Statuses: {user.get('statuses_count')} Most recent status: {user.get('last_status_at')}\n'''
         )
 
-def get_following(creds, user_id):
+def get_following(access_token, user_id):
     the_url = str.format(FOLLOWERS_URL, user_id=user_id)
-    followers = get_paginated_results(creds, the_url)
+    followers = get_paginated_results(access_token, the_url)
     log_to_logfile(f'Fetched {len(followers)} total followers')
     the_url = str.format(FOLLOWING_URL, user_id=user_id)
-    following = get_paginated_results(creds, the_url)
+    following = get_paginated_results(access_token, the_url)
     log_to_logfile(f'Fetched {len(following)} total following')
 
     following_indexes = {f['id']: f for f in following}
@@ -221,9 +212,12 @@ def run_tool():
     if not creds:
         print('No credentials found. Please authorize first.')
         return
-    user_id = get_user_id(creds)
+    access_token = creds.get('access_token')
+    if not access_token:
+        raise ValueError('No access token found in credentials.')
+    user_id = get_user_id(access_token)
     log_to_logfile(f'User ID: {user_id}')
-    get_following(creds, user_id)
+    get_following(access_token, user_id)
     log_to_logfile(f'Log file: {LOG_FILE}')
 
 def main():
