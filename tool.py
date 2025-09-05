@@ -144,6 +144,14 @@ def parse_link_header(link_header):
         }
     return links
 
+def unfollow_user(access_token, unfollow_user_id):
+    full_url = str.format(UNFOLLOW_URL, unfollow_user_id=unfollow_user_id)
+    response = api_request(RequestType.POST, full_url, access_token)
+    log_to_logfile(f'Unfollow response: {response.status_code}: {response.reason}; {response.json()}')
+    if response.status_code != 200:
+        error_str = response.json().get('error', '')
+        log_to_logfile(f'''API error: {response.status_code} {error_str} {response}''')
+
 def get_user_id(access_token):
     response = api_request(RequestType.GET, VERIFY_CREDENTIALS_URL, access_token)
     log_to_logfile(f'Post status response: {response.status_code}: {response.reason}; {response.json()}')
