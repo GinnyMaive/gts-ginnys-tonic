@@ -1,17 +1,14 @@
 import argparse
+import json
+import os
+import re
+import requests
+import time
+import webbrowser
+
 from datetime import datetime
 from enum import Enum
-import glob
-import os
-import json
-import re
-
-import time
-# I'd use ulid but it'd be silly to require that dependency just for dry runs :3
-import uuid
-import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import requests
 from urllib.parse import urlparse, parse_qs
 
 # Configuration
@@ -148,7 +145,7 @@ def parse_link_header(link_header):
 
 def unfollow_user(access_token, unfollow_user_id):
     get_current_relationship(access_token, unfollow_user_id)
-    
+
     full_url = str.format(UNFOLLOW_URL, unfollow_user_id=unfollow_user_id)
     response = api_request(RequestType.POST, full_url, access_token)
     log_to_logfile(f'Unfollow response: {response.status_code}: {response.reason}; {response.json()}')
