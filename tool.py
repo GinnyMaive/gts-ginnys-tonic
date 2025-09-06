@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime
 from enum import Enum
 import glob
@@ -23,6 +24,7 @@ AUTHORIZATION_URL = 'oauth/authorize'
 TOKEN_URL = 'oauth/token'
 FOLLOWERS_URL = 'api/v1/accounts/{user_id}/followers'
 FOLLOWING_URL = 'api/v1/accounts/{user_id}/following'
+RELATIONSHIP_URL = 'api/v1/accounts/relationships'
 UNFOLLOW_URL = 'api/v1/accounts/{unfollow_user_id}/unfollow'
 VERIFY_CREDENTIALS_URL = 'api/v1/accounts/verify_credentials'
 # ACCOUNTS_URL = f'{INSTANCE_BASE_URL}api/v1/accounts'
@@ -145,6 +147,8 @@ def parse_link_header(link_header):
     return links
 
 def unfollow_user(access_token, unfollow_user_id):
+    get_current_relationship(access_token, unfollow_user_id)
+    
     full_url = str.format(UNFOLLOW_URL, unfollow_user_id=unfollow_user_id)
     response = api_request(RequestType.POST, full_url, access_token)
     log_to_logfile(f'Unfollow response: {response.status_code}: {response.reason}; {response.json()}')
@@ -160,6 +164,18 @@ def get_user_id(access_token):
       log_to_logfile(f'''API error: {response.status_code} {error_str} {response}''')
       return None
     return response.json().get('id')
+
+def get_current_relationship(access_token, target_user_id):
+    response = api_request(RequestType.GET, RELATIONSHIP_URL, access_token, params={'id[]': target_user_id})
+    if response.status_code != 200:
+        error_str = response.json().get('error', '')
+        log_to_logfile(f'''API error: {response.status_code} {error_str} {response}''')
+        return None
+    relationships = response.json()
+    if relationships and len(relationships) > 0:
+        log_to_logfile(f'Current relationship with {target_user_id}: {relationships[0]}')
+        return relationships[0]
+    return None
 
 def get_paginated_results(access_token, url):
     max_id = None
@@ -213,9 +229,16 @@ def get_following(access_token, user_id):
 
     return following
 
-def run_tool():
+def main():
     log_to_logfile(f'Starting tool')
     set_app_config()
+    parser = argparse.ArgumentParser(description="ginny's tonic")
+    subparsers = parser.add_subparsers(required=True, dest='command')
+    unfollow_parser = subparsers.add_parser('unfollow', help='Unfollow a user')
+    unfollow_parser.add_argument("unfollow_user_id", help="User ID to unfollow")
+    unfollow_parser = subparsers.add_parser('moots', help='Get detail on moots/non-moots')
+    args = parser.parse_args()
+
     creds = authorize()
     if not creds:
         print('No credentials found. Please authorize first.')
@@ -223,13 +246,13 @@ def run_tool():
     access_token = creds.get('access_token')
     if not access_token:
         raise ValueError('No access token found in credentials.')
-    user_id = get_user_id(access_token)
-    log_to_logfile(f'User ID: {user_id}')
-    get_following(access_token, user_id)
-    log_to_logfile(f'Log file: {LOG_FILE}')
 
-def main():
-    run_tool()
+    if args.command == 'unfollow':
+        unfollow_user(access_token, args.unfollow_user_id)
+    elif args.command == 'moots':
+        user_id = get_user_id(access_token)
+        get_following(access_token, user_id)
+    log_to_logfile(f'Log file: {LOG_FILE}')
 
 if __name__ == '__main__':
     main()
