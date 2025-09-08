@@ -72,7 +72,9 @@ and a few other tidbits.
 
 #### Important Usage Notes
 
-This is pretty hacked together specific to my current use case. I want to clean it up to provide a bit more
+The last post timestamp will only reflect posts **your instance has seen**. Typically this means only new posts from after your follow (I'm guessing unless someone else on your instance already followed that user).
+
+This command is pretty hacked together specific to my current use case. I want to clean it up to provide a bit more
 customizability in the search.
 
 #### Why did you add this?
