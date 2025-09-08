@@ -30,7 +30,7 @@ VERIFY_CREDENTIALS_URL = 'api/v1/accounts/verify_credentials'
 
 CREDENTIALS_FILE = f'{BASE_DIR}credentials.json'
 APPLICATION_FILE = f'{BASE_DIR}application.json'
-LOG_FILE = f'{BASE_DIR}tool.log'
+LOG_FILE = f'{BASE_DIR}tonic.log'
 
 # These will be read and set from APPLICATION_FILE
 CLIENT_ID = ''
@@ -227,7 +227,7 @@ def get_following(access_token, user_id):
     return following
 
 def main():
-    log_to_logfile(f'Starting tool')
+    log_to_logfile('''Starting ginny's tonic''')
     set_app_config()
     parser = argparse.ArgumentParser(description="ginny's tonic")
     subparsers = parser.add_subparsers(required=True, dest='command')
