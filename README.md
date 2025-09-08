@@ -153,6 +153,12 @@ credentials in plain text even with properly-designed and implemented tools like
 
 Especially the base URL my girl.
 
+### cleanup: way better logging and data export
+
+Logs need to be way less all over the place. Additionally commands like `moots` could export JSON of
+the various lists of data they loaded. Not necessarily used as a cache, but would allow a more structured
+way to look at followers/following/etc.
+
 ### probably won't happen: ginnys tonic as a service
 
 For some of these commands, allowing other users to login to their instance without self-configuration
