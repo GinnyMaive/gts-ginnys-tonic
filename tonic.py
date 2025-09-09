@@ -9,7 +9,7 @@ import webbrowser
 from datetime import datetime
 from enum import Enum
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib import parse
 
 # Configuration
 INSTANCE_BASE_URL = 'https://transister.social/'
@@ -17,13 +17,13 @@ DELAY_BETWEEN_REQUESTS = 2 # seconds
 DRY_RUN = True
 BASE_DIR = './'
 
-AUTHORIZATION_URL = 'oauth/authorize'
-TOKEN_URL = 'oauth/token'
-FOLLOWERS_URL = 'api/v1/accounts/{user_id}/followers'
-FOLLOWING_URL = 'api/v1/accounts/{user_id}/following'
-RELATIONSHIP_URL = 'api/v1/accounts/relationships'
-UNFOLLOW_URL = 'api/v1/accounts/{unfollow_user_id}/unfollow'
-VERIFY_CREDENTIALS_URL = 'api/v1/accounts/verify_credentials'
+AUTHORIZATION_URL = '/oauth/authorize'
+TOKEN_URL = '/oauth/token'
+FOLLOWERS_URL = '/api/v1/accounts/{user_id}/followers'
+FOLLOWING_URL = '/api/v1/accounts/{user_id}/following'
+RELATIONSHIP_URL = '/api/v1/accounts/relationships'
+UNFOLLOW_URL = '/api/v1/accounts/{unfollow_user_id}/unfollow'
+VERIFY_CREDENTIALS_URL = '/api/v1/accounts/verify_credentials'
 # ACCOUNTS_URL = f'{INSTANCE_BASE_URL}api/v1/accounts'
 # STATUS_URL = f'{INSTANCE_BASE_URL}api/v1/statuses'
 # MEDIA_URL = f'{INSTANCE_BASE_URL}api/v1/media'
@@ -74,11 +74,14 @@ def get_auth_code():
 
 def set_app_config():
     if os.path.exists(APPLICATION_FILE):
-        global CLIENT_ID, CLIENT_SECRET
+        global CLIENT_ID, CLIENT_SECRET, INSTANCE_BASE_URL
         with open(APPLICATION_FILE, 'r') as f:
-            app_config = json.load(f)
+            app_config = json.load(f)[0]
+            domain = app_config.get('base_url', INSTANCE_BASE_URL)
+            INSTANCE_BASE_URL = domain_make_url(domain)
             CLIENT_ID = app_config.get('client_id', CLIENT_ID)
             CLIENT_SECRET = app_config.get('client_secret', CLIENT_SECRET)
+            log_to_logfile(f'Loaded application credentials for {domain} at {INSTANCE_BASE_URL}')
     else:
         print(f'{APPLICATION_FILE} should exist with your client_id and client_secret!')
 
@@ -126,7 +129,7 @@ def log_to_logfile(message):
         f.write(full_message + '\n')
 
 def api_url(endpoint):
-    return f'{INSTANCE_BASE_URL}{endpoint.lstrip("/")}'
+    return f'{INSTANCE_BASE_URL}/{endpoint.lstrip("/")}'
 
 def parse_link_header(link_header):
     # Find all URL and rel pairs
@@ -135,7 +138,7 @@ def parse_link_header(link_header):
 
     links = {}
     for url, rel in matches:
-        query_params = parse_qs(urlparse(url).query)
+        query_params = parse.parse_qs(parse.urlparse(url).query)
         links[rel] = {
             'url': url,
             'max_id': query_params.get('max_id', [None])[0],
@@ -226,16 +229,79 @@ def get_following(access_token, user_id):
 
     return following
 
+# Turn a simply-specified domain name (eg, 'transister.social') into URL (eg, 'https://transister.social')
+def domain_make_url(domain_name):
+    # Validate this is a simple url kinda.
+    parsed_url = parse.urlparse(domain_name)
+    full_url = parse.urlunsplit(('https', domain_name, '', '', ''))
+    # When parsing something like transister.social, it thinks it's a path, so we need to check all the other parts are empty.
+    if full_url.endswith('/') or parsed_url.scheme or parsed_url.netloc or parsed_url.params or parsed_url.query or parsed_url.fragment:
+        raise ValueError(f'Invalid domain name: {domain_name}; specify just the domain name without a trailing slash, eg, transister.social')
+    return full_url
+
+# Turn a full URL into a simply-specified domain name (eg, 'https://transister.social/anything/whatever' -> 'transister.social')
+def domain_from_url(url):
+    return parse.urlparse(url).netloc
+
 def main():
     log_to_logfile('''Starting ginny's tonic''')
-    set_app_config()
     parser = argparse.ArgumentParser(description="ginny's tonic")
     subparsers = parser.add_subparsers(required=True, dest='command')
+    
+    # unfollow command
     unfollow_parser = subparsers.add_parser('unfollow', help='Unfollow a user')
     unfollow_parser.add_argument("unfollow_user_id", help="User ID to unfollow")
-    unfollow_parser = subparsers.add_parser('moots', help='Get detail on moots/non-moots')
+
+    # moots command
+    subparsers.add_parser('moots', help='Get detail on moots/non-moots')
+
+    # application command
+    application_parser = subparsers.add_parser('application', help='Set application credentials')
+    application_subcommand_parser = application_parser.add_subparsers(required=True, dest='application_command')
+    application_subcommand_parser.add_parser('list', help='List all application credentials')
+    application_subcommand_parser.add_parser('create', help='Create new application credentials') \
+        .add_argument("base_url", help="Base URL of the instance")
+    application_subcommand_parser.add_parser('delete', help='Delete existing application credentials') \
+        .add_argument("base_url", help="Base URL of the instance")
+
+    # parse!
     args = parser.parse_args()
 
+    if args.command == 'application':
+        if args.application_command == 'list':
+            if os.path.exists(APPLICATION_FILE):
+                with open(APPLICATION_FILE, 'r') as f:
+                    app_config = json.load(f)
+                    for entry in app_config:
+                        log_to_logfile(f"Application ID for {entry.get('base_url')}: {entry.get('client_id')}")
+            else:
+                print('No application credentials found.')
+            return
+        elif args.application_command == 'delete':
+            if os.path.exists(APPLICATION_FILE):
+                with open(APPLICATION_FILE, 'r') as f:
+                    app_config = json.load(f)
+                new_app_config = []
+                removed = False
+                for entry in app_config:
+                    if entry.get('base_url') == args.base_url:
+                        log_to_logfile(f"Deleting application credentials for {args.base_url}")
+                        removed = True
+                    else:
+                        log_to_logfile(f"Keeping application credentials for {entry.get('base_url')}")
+                        new_app_config.append(entry)
+                
+                if not removed:
+                    log_to_logfile(f'No application credentials found for {args.base_url}.')
+                    return
+
+                with open(APPLICATION_FILE, 'w') as f:
+                    json.dump(new_app_config, f, indent=4)
+            else:
+                print('No application credentials found.')
+            return
+
+    set_app_config()
     creds = authorize()
     if not creds:
         print('No credentials found. Please authorize first.')
