@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import argparse
 import json
 import os
@@ -11,10 +13,7 @@ from enum import Enum
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib import parse
 
-# Configuration
-INSTANCE_BASE_URL = 'https://transister.social/'
 DELAY_BETWEEN_REQUESTS = 2 # seconds
-DRY_RUN = True
 BASE_DIR = './'
 
 AUTHORIZATION_URL = '/oauth/authorize'
@@ -24,9 +23,7 @@ FOLLOWING_URL = '/api/v1/accounts/{user_id}/following'
 RELATIONSHIP_URL = '/api/v1/accounts/relationships'
 UNFOLLOW_URL = '/api/v1/accounts/{unfollow_user_id}/unfollow'
 VERIFY_CREDENTIALS_URL = '/api/v1/accounts/verify_credentials'
-# ACCOUNTS_URL = f'{INSTANCE_BASE_URL}api/v1/accounts'
-# STATUS_URL = f'{INSTANCE_BASE_URL}api/v1/statuses'
-# MEDIA_URL = f'{INSTANCE_BASE_URL}api/v1/media'
+REDIRECT_URL = 'http://localhost:8080/callback'
 
 CREDENTIALS_FILE = f'{BASE_DIR}credentials.json'
 APPLICATION_FILE = f'{BASE_DIR}application.json'
@@ -35,7 +32,7 @@ LOG_FILE = f'{BASE_DIR}tonic.log'
 # These will be read and set from APPLICATION_FILE
 CLIENT_ID = ''
 CLIENT_SECRET = ''
-REDIRECT_URI = 'http://localhost:8080/callback'
+INSTANCE_BASE_URL = ''
 
 
 def save_credentials(token_data):
@@ -65,7 +62,7 @@ def get_auth_code():
     server = HTTPServer(('localhost', 8080), OAuthCallbackHandler)
     auth_url = (
         f'{api_url(AUTHORIZATION_URL)}?response_type=code&client_id={CLIENT_ID}'
-        f'&redirect_uri={REDIRECT_URI}&scope=read%20write'
+        f'&redirect_uri={REDIRECT_URL}&scope=read%20write'
     )
     webbrowser.open(auth_url)
     print('Please authorize in the browser...')
@@ -101,7 +98,7 @@ def get_token(auth_code):
     data = {
         'grant_type': 'authorization_code',
         'code': auth_code,
-        'redirect_uri': REDIRECT_URI,
+        'redirect_uri': REDIRECT_URL,
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
         'scopes': 'read write',
@@ -123,13 +120,13 @@ def authorize():
     return creds
 
 def log_to_logfile(message):
-    full_message = f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] {message}'
+    full_message = f'''[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}'''
     print(full_message)
     with open(LOG_FILE, 'a+') as f:
         f.write(full_message + '\n')
 
 def api_url(endpoint):
-    return f'{INSTANCE_BASE_URL}/{endpoint.lstrip("/")}'
+    return f'''{INSTANCE_BASE_URL}/{endpoint.lstrip('/')}'''
 
 def parse_link_header(link_header):
     # Find all URL and rel pairs
@@ -146,7 +143,7 @@ def parse_link_header(link_header):
         }
     return links
 
-def unfollow_user(access_token, unfollow_user_id):
+def command_unfollow(access_token, unfollow_user_id):
     get_current_relationship(access_token, unfollow_user_id)
 
     full_url = str.format(UNFOLLOW_URL, unfollow_user_id=unfollow_user_id)
@@ -212,7 +209,8 @@ def log_user_info(user):
         f'''  Statuses: {user.get('statuses_count')} Most recent status: {user.get('last_status_at')}\n'''
         )
 
-def get_following(access_token, user_id):
+def command_moots(access_token):
+    user_id = get_user_id(access_token)
     the_url = str.format(FOLLOWERS_URL, user_id=user_id)
     followers = get_paginated_results(access_token, the_url)
     log_to_logfile(f'Fetched {len(followers)} total followers')
@@ -243,14 +241,49 @@ def domain_make_url(domain_name):
 def domain_from_url(url):
     return parse.urlparse(url).netloc
 
-def main():
-    log_to_logfile('''Starting ginny's tonic''')
-    parser = argparse.ArgumentParser(description="ginny's tonic")
+def command_application(args):
+    if args.application_command == 'list':
+        if os.path.exists(APPLICATION_FILE):
+            with open(APPLICATION_FILE, 'r') as f:
+                app_config = json.load(f)
+                for entry in app_config:
+                    log_to_logfile(f'''Application ID for {entry.get('base_url')}: {entry.get('client_id')}''')
+        else:
+            print('No application credentials found.')
+        return
+    elif args.application_command == 'delete':
+        if os.path.exists(APPLICATION_FILE):
+            with open(APPLICATION_FILE, 'r') as f:
+                app_config = json.load(f)
+            new_app_config = []
+            removed = False
+            for entry in app_config:
+                if entry.get('base_url') == args.base_url:
+                    log_to_logfile(f'Deleting application credentials for {args.base_url}')
+                    removed = True
+                else:
+                    log_to_logfile(f'''Keeping application credentials for {entry.get('base_url')}''')
+                    new_app_config.append(entry)
+            
+            if not removed:
+                log_to_logfile(f'No application credentials found for {args.base_url}.')
+                return
+
+            with open(APPLICATION_FILE, 'w') as f:
+                json.dump(new_app_config, f, indent=4)
+        else:
+            log_to_logfile('No application credentials found.')
+    elif args.application_command == 'create':
+        log_to_logfile('Creating application credentials is not yet implemented :3')
+
+
+def overlycomplicated_args_processor():
+    parser = argparse.ArgumentParser(description='''ginny's tonic''')
     subparsers = parser.add_subparsers(required=True, dest='command')
     
     # unfollow command
     unfollow_parser = subparsers.add_parser('unfollow', help='Unfollow a user')
-    unfollow_parser.add_argument("unfollow_user_id", help="User ID to unfollow")
+    unfollow_parser.add_argument('unfollow_user_id', help='User ID to unfollow')
 
     # moots command
     subparsers.add_parser('moots', help='Get detail on moots/non-moots')
@@ -260,62 +293,39 @@ def main():
     application_subcommand_parser = application_parser.add_subparsers(required=True, dest='application_command')
     application_subcommand_parser.add_parser('list', help='List all application credentials')
     application_subcommand_parser.add_parser('create', help='Create new application credentials') \
-        .add_argument("base_url", help="Base URL of the instance")
+        .add_argument('base_url', help='Base URL of the instance')
     application_subcommand_parser.add_parser('delete', help='Delete existing application credentials') \
-        .add_argument("base_url", help="Base URL of the instance")
+        .add_argument('base_url', help='Base URL of the instance')
 
     # parse!
-    args = parser.parse_args()
+    return parser.parse_args()
 
+def main():
+    log_to_logfile('''Starting ginny's tonic''')
+    args = overlycomplicated_args_processor()
+
+    # has to run before set_app_config() so this one's up here chillin like a villan
     if args.command == 'application':
-        if args.application_command == 'list':
-            if os.path.exists(APPLICATION_FILE):
-                with open(APPLICATION_FILE, 'r') as f:
-                    app_config = json.load(f)
-                    for entry in app_config:
-                        log_to_logfile(f"Application ID for {entry.get('base_url')}: {entry.get('client_id')}")
-            else:
-                print('No application credentials found.')
-            return
-        elif args.application_command == 'delete':
-            if os.path.exists(APPLICATION_FILE):
-                with open(APPLICATION_FILE, 'r') as f:
-                    app_config = json.load(f)
-                new_app_config = []
-                removed = False
-                for entry in app_config:
-                    if entry.get('base_url') == args.base_url:
-                        log_to_logfile(f"Deleting application credentials for {args.base_url}")
-                        removed = True
-                    else:
-                        log_to_logfile(f"Keeping application credentials for {entry.get('base_url')}")
-                        new_app_config.append(entry)
-                
-                if not removed:
-                    log_to_logfile(f'No application credentials found for {args.base_url}.')
-                    return
+        command_application(args)
+        return
 
-                with open(APPLICATION_FILE, 'w') as f:
-                    json.dump(new_app_config, f, indent=4)
-            else:
-                print('No application credentials found.')
-            return
-
+    # Set up credentials; everything past this point requires OAuthorization.
     set_app_config()
     creds = authorize()
     if not creds:
-        print('No credentials found. Please authorize first.')
+        log_to_logfile('No credentials found. Please authorize first.')
         return
     access_token = creds.get('access_token')
     if not access_token:
         raise ValueError('No access token found in credentials.')
 
+    # Call the selected command with our shiny credentials :D
     if args.command == 'unfollow':
-        unfollow_user(access_token, args.unfollow_user_id)
-    elif args.command == 'moots':
-        user_id = get_user_id(access_token)
-        get_following(access_token, user_id)
-    log_to_logfile(f'Log file: {LOG_FILE}')
+        command_unfollow(access_token, args.unfollow_user_id)
+
+    if args.command == 'moots':
+        command_moots(access_token)
 
 if __name__ == '__main__':
     main()
+    log_to_logfile(f'Log file: {LOG_FILE}')
