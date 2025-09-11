@@ -78,7 +78,7 @@ def set_app_config():
             INSTANCE_BASE_URL = domain_make_url(domain)
             CLIENT_ID = app_config.get('client_id', CLIENT_ID)
             CLIENT_SECRET = app_config.get('client_secret', CLIENT_SECRET)
-            log_to_logfile(f'Loaded application credentials for {domain} at {INSTANCE_BASE_URL}')
+            log_to_logfile(f'Loaded application credentials for {domain} at {INSTANCE_BASE_URL}; client ID: {CLIENT_ID}')
     else:
         print(f'{APPLICATION_FILE} should exist with your client_id and client_secret!')
 
@@ -106,6 +106,22 @@ def get_token(auth_code):
     response = requests.post(api_url(TOKEN_URL), data=data)
     response.raise_for_status()
     return response.json()
+
+def create_oauth_application():
+    # TODO: check if it exists
+    # TODO: load proper app credentials instead of just [0]
+    data = {
+        'client_name': 'ginnys_tonic',
+        'redirect_uris': REDIRECT_URL,
+        'scopes': 'read write'
+    }
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    full_url = 'https://transister.social/api/v1/apps'
+    oauth_response = requests.post(full_url, headers=headers, json=data)
+    log_to_logfile(f'OAuth application create response: {oauth_response} {oauth_response.json()}')
+    return oauth_response
 
 def authorize():
     creds = load_credentials()
@@ -274,7 +290,7 @@ def command_application(args):
         else:
             log_to_logfile('No application credentials found.')
     elif args.application_command == 'create':
-        log_to_logfile('Creating application credentials is not yet implemented :3')
+        new_oauth_app = create_oauth_application()
 
 
 def overlycomplicated_args_processor():
