@@ -165,11 +165,17 @@ def command_search_self(access_token, search_term):
     json = {
         'q': f'{search_term}',
         'type': 'statuses',
-        'account_id': account_id
+        'account_id': account_id,
+        'limit': '40',
     }
     log_to_logfile(f'sending request to {SEARCH_URL}: {json}')
     response = api_request(RequestType.GET, SEARCH_URL, access_token, params=json)
-    for status in response.json().get('statuses', []):
+    statuses = response.json().get('statuses', [])
+    log_to_logfile(f'Got {len(statuses)} statuses')
+    # TODO: this could get multiple pages of results by using the last post's ID as a new search request's max_id,
+    # which would only return posts older than that post (it won't repeat the post again too which is nice)
+
+    for status in statuses:
         log_to_logfile(f'{status.get("created_at")}: {status.get("url")}')
 
 def command_unfollow(access_token, unfollow_user_id):
