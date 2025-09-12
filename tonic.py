@@ -24,6 +24,7 @@ RELATIONSHIP_URL = '/api/v1/accounts/relationships'
 UNFOLLOW_URL = '/api/v1/accounts/{unfollow_user_id}/unfollow'
 VERIFY_CREDENTIALS_URL = '/api/v1/accounts/verify_credentials'
 REDIRECT_URL = 'http://localhost:8080/callback'
+SEARCH_URL = '/api/v1/search'
 
 CREDENTIALS_FILE = f'{BASE_DIR}credentials.json'
 APPLICATION_FILE = f'{BASE_DIR}application.json'
@@ -159,6 +160,18 @@ def parse_link_header(link_header):
         }
     return links
 
+def command_search_self(access_token, search_term):
+    account_id = get_user_id(access_token)
+    json = {
+        'q': f'{search_term}',
+        'type': 'statuses',
+        'account_id': account_id
+    }
+    log_to_logfile(f'sending request to {SEARCH_URL}: {json}')
+    response = api_request(RequestType.GET, SEARCH_URL, access_token, params=json)
+    for status in response.json().get('statuses', []):
+        log_to_logfile(f'{status.get("created_at")}: {status.get("url")}')
+
 def command_unfollow(access_token, unfollow_user_id):
     get_current_relationship(access_token, unfollow_user_id)
 
@@ -171,7 +184,7 @@ def command_unfollow(access_token, unfollow_user_id):
 
 def get_user_id(access_token):
     response = api_request(RequestType.GET, VERIFY_CREDENTIALS_URL, access_token)
-    log_to_logfile(f'Post status response: {response.status_code}: {response.reason}; {response.json()}')
+    log_to_logfile(f'Post status response: {response.status_code}: {response.reason}')
     if response.status_code != 200:
       error_str = response.json().get('error', '')
       log_to_logfile(f'''API error: {response.status_code} {error_str} {response}''')
@@ -301,6 +314,9 @@ def overlycomplicated_args_processor():
     unfollow_parser = subparsers.add_parser('unfollow', help='Unfollow a user')
     unfollow_parser.add_argument('unfollow_user_id', help='User ID to unfollow')
 
+    searchself_parser = subparsers.add_parser('searchself', help='Search your posts')
+    searchself_parser.add_argument('search_term', help='Search term')
+
     # moots command
     subparsers.add_parser('moots', help='Get detail on moots/non-moots')
 
@@ -338,6 +354,9 @@ def main():
     # Call the selected command with our shiny credentials :D
     if args.command == 'unfollow':
         command_unfollow(access_token, args.unfollow_user_id)
+
+    if args.command == 'searchself':
+        command_search_self(access_token, args.search_term)
 
     if args.command == 'moots':
         command_moots(access_token)

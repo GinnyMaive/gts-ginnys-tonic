@@ -94,11 +94,6 @@ The outputted data includes the local user ID, which allows me to run the `unfol
 
 Show a list of historical posts from this day in history (eg, if it's 2025-12-22, show posts from 2024-12-22, 2023-12-22, etc)
 
-### add command: `search`
-
-Search *your posts* (and only your posts), and provide in-stream links to the GTS UI.
-(Ie, link to the profile page around this post and not just the individual post)
-
 ### add command: `movepost`
 
 Move a post with a given ID to another GTS account. This would require me storing multiple credentials.
