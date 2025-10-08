@@ -44,6 +44,23 @@ the local file in which the token is cached. At which point the tool no longer h
 
 ## Current Commands
 
+### searchself
+
+#### Usage
+
+`searchself [string to search for]`
+
+Searches your own posts for a given bit of text. I use this a lot to find old posts
+from ye old fedi!
+
+#### Important Usage Notes
+
+As should be clear from the name, this only searches posts the user themselves has made.
+
+#### Why did you add this?
+
+To find some of my old bangers lollll
+
 ### unfollow
 
 #### Usage
